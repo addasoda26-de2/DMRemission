@@ -27,6 +27,7 @@ interface QuickRecordViewProps {
   onAddNewPatientClick: () => void;
   selectedPatientId?: string;
   onClearSelectedPatient?: () => void;
+  villages?: import('../types').VillageInfo[];
 }
 
 const COMMON_SYMPTOMS = [
@@ -46,7 +47,9 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
   onAddNewPatientClick,
   selectedPatientId,
   onClearSelectedPatient,
+  villages,
 }) => {
+  const activeVillages = villages && villages.length > 0 ? villages : VILLAGES_LIST;
   // State for active patient
   const [currentPatient, setCurrentPatient] = useState<Patient | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -379,9 +382,9 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                ทั้งหมด (18 ม.)
+                ทั้งหมด ({activeVillages.length} ม.)
               </button>
-              {VILLAGES_LIST.map((v) => (
+              {activeVillages.map((v) => (
                 <button
                   key={v.villageNo}
                   type="button"

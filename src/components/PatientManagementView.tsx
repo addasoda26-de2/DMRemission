@@ -31,6 +31,7 @@ interface PatientManagementViewProps {
   isAuthorizedNurse: boolean;
   activeNurseInfo?: AppUser | null;
   onRequestNurseAuth: () => void;
+  villages?: import('../types').VillageInfo[];
 }
 
 export const PatientManagementView: React.FC<PatientManagementViewProps> = ({
@@ -44,7 +45,9 @@ export const PatientManagementView: React.FC<PatientManagementViewProps> = ({
   isAuthorizedNurse,
   activeNurseInfo,
   onRequestNurseAuth,
+  villages,
 }) => {
+  const activeVillages = villages && villages.length > 0 ? villages : VILLAGES_LIST;
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVillage, setSelectedVillage] = useState<number | 'all'>('all');
 
@@ -274,9 +277,9 @@ export const PatientManagementView: React.FC<PatientManagementViewProps> = ({
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
             }`}
           >
-            ทั้งหมด 18 หมู่บ้าน ({patients.length})
+            ทั้งหมด ({activeVillages.length} หมู่บ้าน) ({patients.length})
           </button>
-          {VILLAGES_LIST.map((v) => {
+          {activeVillages.map((v) => {
             const countInVillage = patients.filter(
               (p) => p.villageNo === v.villageNo
             ).length;
@@ -604,7 +607,7 @@ export const PatientManagementView: React.FC<PatientManagementViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">
-                    หมู่บ้าน (1-18) *
+                    หมู่บ้าน *
                   </label>
                   <select
                     value={formData.villageNo || 1}
@@ -613,7 +616,7 @@ export const PatientManagementView: React.FC<PatientManagementViewProps> = ({
                     }
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                   >
-                    {VILLAGES_LIST.map((v) => (
+                    {activeVillages.map((v) => (
                       <option key={v.villageNo} value={v.villageNo}>
                         หมู่ {v.villageNo} {v.name}
                       </option>

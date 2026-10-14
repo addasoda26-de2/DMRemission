@@ -18,6 +18,7 @@ interface HeaderProps {
   isSheetConnected: boolean;
   sheetTitle?: string;
   onOpenSheetSettings: () => void;
+  villageCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   isSheetConnected,
   sheetTitle,
   onOpenSheetSettings,
+  villageCount,
 }) => {
   const handleShareLine = () => {
     const url = window.location.href;
@@ -55,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
                   DM Remission โซ่พิสัย
                 </h1>
                 <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full">
-                  18 หมู่บ้าน
+                  {villageCount ? `${villageCount} หมู่บ้าน` : 'ตำบลโซ่'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">

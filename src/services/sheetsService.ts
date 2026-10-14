@@ -1,5 +1,15 @@
-import { Patient, BloodSugarLog, AppUser } from '../types';
+import { Patient, BloodSugarLog, AppUser, VillageInfo } from '../types';
 import { getAccessToken } from './auth';
+
+export const DEFAULT_SPREADSHEET_ID = '1W1DncVSCeiJ9xN_dp7a-2x92Qs8yDWCIjlLIbOV2FmM';
+
+export const VILLAGE_HEADERS = [
+  'VillageNo',
+  'VillageName',
+  'Subdistrict',
+  'District',
+  'Province',
+];
 
 export const USER_HEADERS = [
   'UserID',
@@ -209,6 +219,13 @@ export const ensureSheetsExist = async (spreadsheetId: string) => {
       },
     });
   }
+  if (!existingSheets.some((s: string) => s.toLowerCase() === 'village' || s.toLowerCase() === 'villages')) {
+    requests.push({
+      addSheet: {
+        properties: { title: 'Village' },
+      },
+    });
+  }
 
   if (requests.length > 0) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
@@ -259,6 +276,20 @@ export const ensureSheetsExist = async (spreadsheetId: string) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ values: [USER_HEADERS] }),
+        }
+      );
+    }
+
+    if (!existingSheets.some((s: string) => s.toLowerCase() === 'village' || s.toLowerCase() === 'villages')) {
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Village'!A1:E1?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ values: [VILLAGE_HEADERS] }),
         }
       );
     }
@@ -668,4 +699,104 @@ export const appendUserToSheet = async (
     throw new Error(err.error?.message || 'บันทึกข้อมูลเจ้าหน้าที่ลงชีต User ล้มเหลว');
   }
 };
+
+export const fetchVillagesFromSheet = async (spreadsheetId: string): Promise<VillageInfo[]> => {
+  const token = await getAccessToken();
+  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
+
+  // Try fetching 'Village' or 'villages'
+  let res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Village'!A1:Z100`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  if (!res.ok) {
+    res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'villages'!A1:Z100`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+  }
+
+  if (!res.ok) {
+    return [];
+  }
+
+  const data = await res.json();
+  const rows: any[][] = data.values || [];
+  if (rows.length <= 1) return [];
+
+  const headers = rows[0].map((h: any) => String(h || '').trim());
+  const getIdx = (name: string, fallbackIdx: number) => {
+    const idx = headers.findIndex((h: string) => h.toLowerCase() === name.toLowerCase());
+    return idx >= 0 ? idx : fallbackIdx;
+  };
+
+  const vNoIdx = getIdx('VillageNo', 0);
+  const vNameIdx = getIdx('VillageName', 1);
+  const subIdx = getIdx('Subdistrict', 2);
+  const distIdx = getIdx('District', 3);
+  const provIdx = getIdx('Province', 4);
+
+  const list: VillageInfo[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length === 0 || !r[vNoIdx]) continue;
+
+    const no = parseInt(String(r[vNoIdx]).replace(/\D/g, ''), 10);
+    if (isNaN(no)) continue;
+
+    const rawName = String(r[vNameIdx] || '').trim();
+    const name = rawName.startsWith('บ้าน') ? rawName : (rawName ? `บ้าน${rawName}` : `หมู่ ${no}`);
+
+    list.push({
+      villageNo: no,
+      name,
+      subdistrict: String(r[subIdx] || 'โซ่').trim(),
+      district: String(r[distIdx] || 'โซ่พิสัย').trim(),
+      province: String(r[provIdx] || 'บึงกาฬ').trim(),
+    });
+  }
+
+  // Sort ascending by villageNo
+  list.sort((a, b) => a.villageNo - b.villageNo);
+  return list;
+};
+
+export const appendVillageToSheet = async (
+  spreadsheetId: string,
+  village: VillageInfo
+): Promise<void> => {
+  const token = await getAccessToken();
+  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
+
+  const row = [
+    village.villageNo,
+    village.name,
+    village.subdistrict,
+    village.district,
+    village.province,
+  ];
+
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Village'!A:E:append?valueInputOption=USER_ENTERED`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'บันทึกข้อมูลหมู่บ้านลงชีต Village ล้มเหลว');
+  }
+};
+
 

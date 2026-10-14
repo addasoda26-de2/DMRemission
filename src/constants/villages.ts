@@ -23,10 +23,11 @@ export const VILLAGES_LIST: VillageInfo[] = [
   { villageNo: 16, name: 'บ้านเทพมีชัย', subdistrict: SUBDISTRICT_NAME, district: DISTRICT_NAME, province: PROVINCE_NAME },
   { villageNo: 17, name: 'บ้านร่วมใจพัฒนา', subdistrict: SUBDISTRICT_NAME, district: DISTRICT_NAME, province: PROVINCE_NAME },
   { villageNo: 18, name: 'บ้านศรีบุญเรือง', subdistrict: SUBDISTRICT_NAME, district: DISTRICT_NAME, province: PROVINCE_NAME },
+  { villageNo: 19, name: 'บ้านทดสอบพัฒนา', subdistrict: SUBDISTRICT_NAME, district: DISTRICT_NAME, province: PROVINCE_NAME },
 ];
 
-export const getVillageLabel = (villageNo: number): string => {
-  const v = VILLAGES_LIST.find((item) => item.villageNo === Number(villageNo));
+export const getVillageLabel = (villageNo: number, list: VillageInfo[] = VILLAGES_LIST): string => {
+  const v = list.find((item) => item.villageNo === Number(villageNo));
   if (v) {
     return `หมู่ ${v.villageNo} ${v.name}`;
   }

@@ -21,12 +21,15 @@ import { ConfirmModal } from './ConfirmModal';
 interface HistoryLogsViewProps {
   logs: BloodSugarLog[];
   onDeleteLog: (log: BloodSugarLog) => Promise<void>;
+  villages?: import('../types').VillageInfo[];
 }
 
 export const HistoryLogsView: React.FC<HistoryLogsViewProps> = ({
   logs,
   onDeleteLog,
+  villages,
 }) => {
+  const activeVillages = villages && villages.length > 0 ? villages : VILLAGES_LIST;
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVillage, setSelectedVillage] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -105,15 +108,15 @@ export const HistoryLogsView: React.FC<HistoryLogsViewProps> = ({
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label className="block font-bold text-slate-600 mb-1">
-              หมู่บ้าน (1-18)
+              หมู่บ้าน
             </label>
             <select
               value={selectedVillage}
               onChange={(e) => setSelectedVillage(e.target.value)}
               className="w-full p-2 rounded-xl border border-slate-200 bg-white font-medium outline-none focus:ring-2 focus:ring-sky-500 text-xs"
             >
-              <option value="all">ทั้งหมด 18 หมู่บ้าน</option>
-              {VILLAGES_LIST.map((v) => (
+              <option value="all">ทั้งหมด ({activeVillages.length} หมู่บ้าน)</option>
+              {activeVillages.map((v) => (
                 <option key={v.villageNo} value={`หมู่ ${v.villageNo}`}>
                   ม.{v.villageNo} {v.name}
                 </option>

@@ -13,18 +13,22 @@ import { HistoryLogsView } from './components/HistoryLogsView';
 import { DashboardAndExportView } from './components/DashboardAndExportView';
 import { GoogleSheetSettingsView } from './components/GoogleSheetSettingsView';
 import { NurseAuthModal } from './components/NurseAuthModal';
-import { Patient, BloodSugarLog, AppUser } from './types';
+import { Patient, BloodSugarLog, AppUser, VillageInfo } from './types';
 import { INITIAL_PATIENTS, INITIAL_LOGS, INITIAL_USERS } from './constants/initialData';
+import { VILLAGES_LIST } from './constants/villages';
 import { initAuth, getAccessToken } from './services/auth';
 import {
+  DEFAULT_SPREADSHEET_ID,
   fetchPatientsFromSheet,
   fetchLogsFromSheet,
   fetchUsersFromSheet,
+  fetchVillagesFromSheet,
   appendPatientToSheet,
   updatePatientInSheet,
   deleteRowFromSheet,
   appendLogToSheet,
   appendUserToSheet,
+  appendVillageToSheet,
 } from './services/sheetsService';
 
 export default function App() {
@@ -39,10 +43,10 @@ export default function App() {
   // Navigation tab
   const [activeTab, setActiveTab] = useState<NavTab>('record');
 
-  // Google Auth & Sheet state
+  // Google Auth & Sheet state (Connected to the user's Google Sheet ID)
   const [user, setUser] = useState<User | null>(null);
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => {
-    return localStorage.getItem('dm_spreadsheet_id') || null;
+    return localStorage.getItem('dm_spreadsheet_id') || DEFAULT_SPREADSHEET_ID;
   });
   const [spreadsheetTitle, setSpreadsheetTitle] = useState<string>(() => {
     return (
@@ -51,6 +55,19 @@ export default function App() {
     );
   });
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Dynamic Villages list from sheet 'Village' or default list
+  const [villages, setVillages] = useState<VillageInfo[]>(() => {
+    const saved = localStorage.getItem('dm_villages_data');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return VILLAGES_LIST;
+      }
+    }
+    return VILLAGES_LIST;
+  });
 
   // Registered Nurses in User Sheet
   const [registeredUsers, setRegisteredUsers] = useState<AppUser[]>(() => {
@@ -68,12 +85,13 @@ export default function App() {
   const [activeNurse, setActiveNurse] = useState<AppUser | null>(null);
   const [isNurseAuthModalOpen, setIsNurseAuthModalOpen] = useState<boolean>(false);
 
-  // Data state
+  // Data state (Initialized with the user's provided 19 patients)
   const [patients, setPatients] = useState<Patient[]>(() => {
     const saved = localStorage.getItem('dm_patients_data');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return parsed && parsed.length > 0 ? parsed : INITIAL_PATIENTS;
       } catch (e) {
         return INITIAL_PATIENTS;
       }
@@ -106,6 +124,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('dm_user_role', userRole);
   }, [userRole]);
+
+  // Persist villages
+  useEffect(() => {
+    localStorage.setItem('dm_villages_data', JSON.stringify(villages));
+  }, [villages]);
 
   // Persist registered users
   useEffect(() => {
@@ -173,7 +196,7 @@ export default function App() {
 
     setIsSyncing(true);
     try {
-      const [sheetPatients, sheetLogs, sheetUsers] = await Promise.all([
+      const [sheetPatients, sheetLogs, sheetUsers, sheetVillages] = await Promise.all([
         fetchPatientsFromSheet(spreadsheetId).catch((err) => {
           console.warn('Could not fetch patients from sheet:', err);
           return null;
@@ -184,6 +207,10 @@ export default function App() {
         }),
         fetchUsersFromSheet(spreadsheetId).catch((err) => {
           console.warn('Could not fetch users from sheet:', err);
+          return null;
+        }),
+        fetchVillagesFromSheet(spreadsheetId).catch((err) => {
+          console.warn('Could not fetch villages from sheet:', err);
           return null;
         }),
       ]);
@@ -197,8 +224,11 @@ export default function App() {
       if (sheetUsers && sheetUsers.length > 0) {
         setRegisteredUsers(sheetUsers);
       }
+      if (sheetVillages && sheetVillages.length > 0) {
+        setVillages(sheetVillages);
+      }
 
-      setToastMessage('ซิงค์ข้อมูลกับ Google Sheet เรียบร้อยแล้ว (3 ชีต: patient, BloodSugarLogs, User)');
+      setToastMessage('ซิงค์ข้อมูลกับ Google Sheet เรียบร้อยแล้ว (รวมชีต Village, patient, BloodSugarLogs, User)');
     } catch (err: any) {
       console.error('Sync error:', err);
     } finally {
@@ -358,7 +388,7 @@ export default function App() {
     setToastMessage(`ยืนยันสิทธิ์พยาบาล ${nurse.fullName} เรียบร้อยแล้ว`);
   };
 
-  // Seed initial data to connected empty sheet (all 3 sheets: patient, BloodSugarLogs, User)
+  // Seed initial data to connected empty sheet (all sheets: patient, BloodSugarLogs, User, Village)
   const handleSeedInitialData = async () => {
     if (!spreadsheetId) return;
     const token = await getAccessToken();
@@ -375,7 +405,10 @@ export default function App() {
       for (const u of registeredUsers) {
         await appendUserToSheet(spreadsheetId, u);
       }
-      setToastMessage('นำเข้าข้อมูลตัวอย่างทั้งหมดเข้าสู่ Google Sheet (ทั้ง 3 ชีต) เรียบร้อยแล้ว!');
+      for (const v of villages) {
+        await appendVillageToSheet(spreadsheetId, v).catch(() => {});
+      }
+      setToastMessage('นำเข้าข้อมูลตัวอย่างทั้งหมดเข้าสู่ Google Sheet เรียบร้อยแล้ว!');
       await syncWithSheet();
     } catch (err: any) {
       alert('เกิดข้อผิดพลาดในการนำเข้าข้อมูล: ' + err.message);
@@ -417,6 +450,7 @@ export default function App() {
         isSheetConnected={!!spreadsheetId}
         sheetTitle={spreadsheetTitle}
         onOpenSheetSettings={() => setActiveTab('sheets')}
+        villageCount={villages.length}
       />
 
       {/* Toast Alert */}
@@ -435,6 +469,7 @@ export default function App() {
             onAddNewPatientClick={handleAddNewPatientFromRecord}
             selectedPatientId={selectedPatientIdForMeasure}
             onClearSelectedPatient={() => setSelectedPatientIdForMeasure(undefined)}
+            villages={villages}
           />
         )}
 
@@ -450,11 +485,16 @@ export default function App() {
             isAuthorizedNurse={isAuthorizedNurse}
             activeNurseInfo={activeNurse}
             onRequestNurseAuth={() => setIsNurseAuthModalOpen(true)}
+            villages={villages}
           />
         )}
 
         {activeTab === 'history' && (
-          <HistoryLogsView logs={logs} onDeleteLog={handleDeleteLog} />
+          <HistoryLogsView
+            logs={logs}
+            onDeleteLog={handleDeleteLog}
+            villages={villages}
+          />
         )}
 
         {activeTab === 'dashboard' && (
@@ -462,6 +502,7 @@ export default function App() {
             patients={patients}
             logs={logs}
             spreadsheetId={spreadsheetId || undefined}
+            villages={villages}
           />
         )}
 

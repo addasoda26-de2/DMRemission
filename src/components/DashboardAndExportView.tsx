@@ -29,13 +29,16 @@ interface DashboardAndExportViewProps {
   patients: Patient[];
   logs: BloodSugarLog[];
   spreadsheetId?: string;
+  villages?: import('../types').VillageInfo[];
 }
 
 export const DashboardAndExportView: React.FC<DashboardAndExportViewProps> = ({
   patients,
   logs,
   spreadsheetId,
+  villages,
 }) => {
+  const activeVillages = villages && villages.length > 0 ? villages : VILLAGES_LIST;
   // Export filter states
   const [datePreset, setDatePreset] = useState<'all' | 'today' | '7days' | 'month' | 'custom'>('all');
   const [startDate, setStartDate] = useState<string>('');
@@ -139,7 +142,7 @@ export const DashboardAndExportView: React.FC<DashboardAndExportViewProps> = ({
 
   // Village statistics
   const villageStats = useMemo(() => {
-    return VILLAGES_LIST.map((v) => {
+    return activeVillages.map((v) => {
       const villagePatients = patients.filter((p) => p.villageNo === v.villageNo);
       const villageLogs = logs.filter((l) => l.village.includes(`หมู่ ${v.villageNo}`));
       const remissionVisits = villageLogs.filter((l) => {
@@ -160,7 +163,7 @@ export const DashboardAndExportView: React.FC<DashboardAndExportViewProps> = ({
         remissionRate: rate,
       };
     });
-  }, [patients, logs]);
+  }, [patients, logs, activeVillages]);
 
   const handleExportCSV = () => {
     if (exportLogs.length === 0) {
@@ -497,15 +500,15 @@ export const DashboardAndExportView: React.FC<DashboardAndExportViewProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              2. กรองหมู่บ้าน (1-18):
+              2. กรองหมู่บ้าน:
             </label>
             <select
               value={filterVillage}
               onChange={(e) => setFilterVillage(e.target.value)}
               className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             >
-              <option value="all">ทั้งหมด 18 หมู่บ้าน</option>
-              {VILLAGES_LIST.map((v) => (
+              <option value="all">ทั้งหมด ({activeVillages.length} หมู่บ้าน)</option>
+              {activeVillages.map((v) => (
                 <option key={v.villageNo} value={`หมู่ ${v.villageNo}`}>
                   ม.{v.villageNo} {v.name}
                 </option>
@@ -563,7 +566,7 @@ export const DashboardAndExportView: React.FC<DashboardAndExportViewProps> = ({
       {/* Village Breakdown Table */}
       <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-2xs">
         <h3 className="font-bold text-slate-800 text-base mb-2">
-          ข้อมูลแยกรายหมู่บ้าน (ตำบลโซ่ 18 หมู่บ้าน)
+          ข้อมูลแยกรายหมู่บ้าน (ตำบลโซ่ {activeVillages.length} หมู่บ้าน)
         </h3>
         <p className="text-xs text-slate-500 mb-3">
           สถิติจำนวนผู้ป่วยและการลงพื้นที่ตรวจของ อสม. แต่ละหมู่บ้าน
