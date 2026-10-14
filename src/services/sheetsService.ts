@@ -296,24 +296,74 @@ export const ensureSheetsExist = async (spreadsheetId: string) => {
   }
 };
 
-export const fetchPatientsFromSheet = async (spreadsheetId: string): Promise<Patient[]> => {
-  const token = await getAccessToken();
-  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
-
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'patient'!A1:Z500`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-
+export const fetchViaGviz = async (
+  spreadsheetId: string,
+  sheetName: string
+): Promise<any[][]> => {
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(
+    sheetName
+  )}`;
+  const res = await fetch(url);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'ไม่สามารถโหลดข้อมูลผู้ป่วยจาก Sheet ได้');
+    throw new Error(`ไม่สามารถเข้าถึงแผ่นงาน ${sheetName} ได้ (สถานะ: ${res.status})`);
+  }
+  const text = await res.text();
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}');
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error(`รูปแบบข้อมูลไม่ถูกต้องสำหรับชีต ${sheetName}`);
+  }
+  const jsonStr = text.substring(jsonStart, jsonEnd + 1);
+  const data = JSON.parse(jsonStr);
+  const cols = data.table?.cols || [];
+  const rows = data.table?.rows || [];
+
+  const headers = cols.map((c: any) => String(c?.label || '').trim());
+  const dataRows = rows.map((r: any) => {
+    return (r.c || []).map((cell: any) => {
+      if (!cell) return '';
+      if (cell.f !== undefined && cell.f !== null) return cell.f;
+      return cell.v !== undefined && cell.v !== null ? cell.v : '';
+    });
+  });
+
+  return [headers, ...dataRows];
+};
+
+export const fetchPatientsFromSheet = async (spreadsheetId: string): Promise<Patient[]> => {
+  let rows: any[][] = [];
+  const token = await getAccessToken();
+
+  if (token) {
+    try {
+      const res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'patient'!A1:Z500`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        rows = data.values || [];
+      }
+    } catch (e) {
+      console.warn('Authenticated fetch failed, attempting public gviz fetch:', e);
+    }
   }
 
-  const data = await res.json();
-  const rows: any[][] = data.values || [];
+  // Fallback to gviz if unauthenticated (e.g. VHV without Google login) or token call failed
+  if (rows.length === 0) {
+    try {
+      rows = await fetchViaGviz(spreadsheetId, 'patient');
+    } catch (err) {
+      console.warn('Gviz fetch failed:', err);
+      if (!token) {
+        throw new Error('ไม่สามารถโหลดข้อมูลผู้ป่วยจาก Google Sheet ได้');
+      }
+      throw err;
+    }
+  }
+
   if (rows.length <= 1) return [];
 
   const headers = rows[0].map((h: any) => String(h || '').trim());
@@ -341,19 +391,19 @@ export const fetchPatientsFromSheet = async (spreadsheetId: string): Promise<Pat
   const patients: Patient[] = [];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
-    if (!r || r.length === 0 || !r[fnIdx] && !r[idIdx]) continue;
+    if (!r || r.length === 0 || (!r[fnIdx] && !r[idIdx])) continue;
 
     patients.push({
       patientId: String(r[idIdx] || `DM-${i}`),
       prefix: String(r[prefixIdx] || ''),
-      firstName: String(r[fnIdx] || ''),
-      lastName: String(r[lnIdx] || ''),
+      firstName: String(r[fnIdx] || '').trim(),
+      lastName: String(r[lnIdx] || '').trim(),
       age: Number(r[ageIdx]) || 0,
       address: String(r[addrIdx] || ''),
       villageNo: Number(r[villageIdx]) || 1,
-      subdistrict: String(r[subIdx] || 'โซ่'),
-      district: String(r[distIdx] || 'โซ่พิสัย'),
-      province: String(r[provIdx] || 'บึงกาฬ'),
+      subdistrict: String(r[subIdx] || 'โซ่').trim(),
+      district: String(r[distIdx] || 'โซ่พิสัย').trim(),
+      province: String(r[provIdx] || 'บึงกาฬ').trim(),
       dob: String(r[dobIdx] || ''),
       idCard: String(r[idCardIdx] || ''),
       phone: String(r[phoneIdx] || ''),
@@ -365,23 +415,37 @@ export const fetchPatientsFromSheet = async (spreadsheetId: string): Promise<Pat
 };
 
 export const fetchLogsFromSheet = async (spreadsheetId: string): Promise<BloodSugarLog[]> => {
+  let rows: any[][] = [];
   const token = await getAccessToken();
-  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
 
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugarLogs'!A1:Z1000`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
+  if (token) {
+    try {
+      const res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugarLogs'!A1:Z1000`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        rows = data.values || [];
+      }
+    } catch (e) {
+      console.warn('Authenticated fetch failed for logs, attempting gviz fetch:', e);
     }
-  );
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'ไม่สามารถโหลดประวัติการตรวจน้ำตาลได้');
   }
 
-  const data = await res.json();
-  const rows: any[][] = data.values || [];
+  // Fallback to gviz if unauthenticated
+  if (rows.length === 0) {
+    try {
+      rows = await fetchViaGviz(spreadsheetId, 'BloodSugarLogs');
+    } catch (err) {
+      console.warn('Gviz fetch for logs failed:', err);
+      if (!token) return [];
+      throw err;
+    }
+  }
+
   if (rows.length <= 1) return [];
 
   const headers = rows[0].map((h: any) => String(h || '').trim());
@@ -609,23 +673,37 @@ export const deleteRowFromSheet = async (
 };
 
 export const fetchUsersFromSheet = async (spreadsheetId: string): Promise<AppUser[]> => {
+  let rows: any[][] = [];
   const token = await getAccessToken();
-  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
 
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'User'!A1:Z500`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
+  if (token) {
+    try {
+      const res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'User'!A1:Z500`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        rows = data.values || [];
+      }
+    } catch (e) {
+      console.warn('Authenticated fetch failed for users, attempting gviz fetch:', e);
     }
-  );
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'ไม่สามารถโหลดข้อมูลรายชื่อ User จากชีตได้');
   }
 
-  const data = await res.json();
-  const rows: any[][] = data.values || [];
+  // Fallback to gviz if unauthenticated
+  if (rows.length === 0) {
+    try {
+      rows = await fetchViaGviz(spreadsheetId, 'User');
+    } catch (err) {
+      console.warn('Gviz fetch for users failed:', err);
+      if (!token) return [];
+      throw err;
+    }
+  }
+
   if (rows.length <= 1) return [];
 
   const headers = rows[0].map((h: any) => String(h || '').trim());
@@ -650,7 +728,7 @@ export const fetchUsersFromSheet = async (spreadsheetId: string): Promise<AppUse
 
     users.push({
       userId: String(r[idIdx] || `USR-${i}`),
-      fullName: String(r[nameIdx] || ''),
+      fullName: String(r[nameIdx] || '').trim(),
       email: String(r[emailIdx] || '').trim().toLowerCase(),
       role: (r[roleIdx] as any) || 'Nurse',
       phone: String(r[phoneIdx] || ''),
@@ -701,32 +779,49 @@ export const appendUserToSheet = async (
 };
 
 export const fetchVillagesFromSheet = async (spreadsheetId: string): Promise<VillageInfo[]> => {
+  let rows: any[][] = [];
   const token = await getAccessToken();
-  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
 
-  // Try fetching 'Village' or 'villages'
-  let res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Village'!A1:Z100`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-
-  if (!res.ok) {
-    res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'villages'!A1:Z100`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
+  if (token) {
+    try {
+      let res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Village'!A1:Z100`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (!res.ok) {
+        res = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'villages'!A1:Z100`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
       }
-    );
+      if (res.ok) {
+        const data = await res.json();
+        rows = data.values || [];
+      }
+    } catch (e) {
+      console.warn('Authenticated fetch failed for villages, attempting gviz fetch:', e);
+    }
   }
 
-  if (!res.ok) {
-    return [];
+  // Fallback to gviz if unauthenticated
+  if (rows.length === 0) {
+    try {
+      rows = await fetchViaGviz(spreadsheetId, 'Village');
+    } catch (err) {
+      try {
+        rows = await fetchViaGviz(spreadsheetId, 'villages');
+      } catch (err2) {
+        console.warn('Gviz fetch for villages failed:', err2);
+        if (!token) return [];
+        throw err;
+      }
+    }
   }
 
-  const data = await res.json();
-  const rows: any[][] = data.values || [];
   if (rows.length <= 1) return [];
 
   const headers = rows[0].map((h: any) => String(h || '').trim());
@@ -750,11 +845,11 @@ export const fetchVillagesFromSheet = async (spreadsheetId: string): Promise<Vil
     if (isNaN(no)) continue;
 
     const rawName = String(r[vNameIdx] || '').trim();
-    const name = rawName.startsWith('บ้าน') ? rawName : (rawName ? `บ้าน${rawName}` : `หมู่ ${no}`);
+    const name = rawName.startsWith('บ้าน') ? rawName.replace(/^บ้าน/, '') : rawName;
 
     list.push({
       villageNo: no,
-      name,
+      name: name || `หมู่ ${no}`,
       subdistrict: String(r[subIdx] || 'โซ่').trim(),
       district: String(r[distIdx] || 'โซ่พิสัย').trim(),
       province: String(r[provIdx] || 'บึงกาฬ').trim(),

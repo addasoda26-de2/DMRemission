@@ -52,7 +52,7 @@ export interface AppUser {
   userId: string;
   fullName: string;
   email: string;
-  role: 'Nurse' | 'VHV' | 'Admin';
+  role: 'Nurse' | 'VHV' | 'Admin' | 'Staff' | string;
   phone: string;
   position: string;
   status: 'Active' | 'Pending' | 'Inactive';

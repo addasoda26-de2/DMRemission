@@ -188,14 +188,14 @@ export default function App() {
     (userRole === 'nurse' && activeNurse !== null)
   );
 
-  // Sync data from Google Sheet if connected and user is logged in
+  // Sync data from Google Sheet (works authenticated via API or unauthenticated via gviz)
   const syncWithSheet = async () => {
     if (!spreadsheetId) return;
-    const token = await getAccessToken();
-    if (!token) return;
 
     setIsSyncing(true);
     try {
+      const token = await getAccessToken().catch(() => null);
+
       const [sheetPatients, sheetLogs, sheetUsers, sheetVillages] = await Promise.all([
         fetchPatientsFromSheet(spreadsheetId).catch((err) => {
           console.warn('Could not fetch patients from sheet:', err);
@@ -215,20 +215,30 @@ export default function App() {
         }),
       ]);
 
+      let updatedCount = 0;
       if (sheetPatients && sheetPatients.length > 0) {
         setPatients(sheetPatients);
+        localStorage.setItem('dm_patients_data', JSON.stringify(sheetPatients));
+        updatedCount += sheetPatients.length;
       }
       if (sheetLogs && sheetLogs.length > 0) {
         setLogs(sheetLogs);
+        localStorage.setItem('dm_blood_sugar_logs', JSON.stringify(sheetLogs));
       }
       if (sheetUsers && sheetUsers.length > 0) {
         setRegisteredUsers(sheetUsers);
+        localStorage.setItem('dm_registered_users', JSON.stringify(sheetUsers));
       }
       if (sheetVillages && sheetVillages.length > 0) {
         setVillages(sheetVillages);
+        localStorage.setItem('dm_villages_data', JSON.stringify(sheetVillages));
       }
 
-      setToastMessage('ซิงค์ข้อมูลกับ Google Sheet เรียบร้อยแล้ว (รวมชีต Village, patient, BloodSugarLogs, User)');
+      if (token) {
+        setToastMessage('ซิงค์ข้อมูลสองทางกับ Google Sheet เรียบร้อยแล้ว (เข้าสู่ระบบแล้ว)');
+      } else {
+        setToastMessage(`ดึงข้อมูลจาก Google Sheet สำเร็จ (${updatedCount} คนไข้, ${sheetVillages?.length || 18} หมู่บ้าน)`);
+      }
     } catch (err: any) {
       console.error('Sync error:', err);
     } finally {
@@ -236,12 +246,12 @@ export default function App() {
     }
   };
 
-  // Sync when spreadsheetId or user becomes available
+  // Sync on initial mount or when spreadsheetId / user changes
   useEffect(() => {
-    if (user && spreadsheetId) {
+    if (spreadsheetId) {
       syncWithSheet();
     }
-  }, [user, spreadsheetId]);
+  }, [spreadsheetId, user]);
 
   const handleSetSpreadsheet = (id: string, title: string) => {
     setSpreadsheetId(id);

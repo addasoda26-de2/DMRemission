@@ -16,6 +16,7 @@ import {
   Calendar,
   MapPin,
   Plus,
+  X,
 } from 'lucide-react';
 import { Patient, BloodSugarLog } from '../types';
 import { evaluateBloodSugar, calculateBmi } from '../utils/sugarEvaluation';
@@ -100,19 +101,37 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
   const sugarEval = evaluateBloodSugar(bloodSugar);
   const bmiInfo = calculateBmi(weight, height);
 
-  // Filter patients for selection
+  // Filter patients for selection (Name, IDCard digits, HN, Phone)
   const filteredPatients = patients.filter((p) => {
     const matchVillage =
       filterVillage === 'all' || p.villageNo === Number(filterVillage);
-    const searchLower = searchTerm.toLowerCase();
-    const matchSearch =
-      !searchTerm ||
-      p.firstName.toLowerCase().includes(searchLower) ||
-      p.lastName.toLowerCase().includes(searchLower) ||
-      p.idCard.includes(searchTerm) ||
-      p.patientId.toLowerCase().includes(searchLower);
 
-    return matchVillage && matchSearch;
+    if (!searchTerm.trim()) return matchVillage;
+
+    const term = searchTerm.trim().toLowerCase();
+    const cleanDigits = term.replace(/\D/g, '');
+
+    const fullNameWithPrefix = `${p.prefix || ''}${p.firstName || ''} ${p.lastName || ''}`.toLowerCase();
+    const fullNamePlain = `${p.firstName || ''} ${p.lastName || ''}`.toLowerCase();
+    const fullNameNoSpace = `${p.firstName || ''}${p.lastName || ''}`.toLowerCase();
+
+    const matchName =
+      fullNameWithPrefix.includes(term) ||
+      fullNamePlain.includes(term) ||
+      fullNameNoSpace.includes(term) ||
+      p.firstName.toLowerCase().includes(term) ||
+      p.lastName.toLowerCase().includes(term);
+
+    // Support matching full 13-digit ID card or partial digits (e.g. 4-6 digits)
+    const pIdDigits = p.idCard ? p.idCard.replace(/\D/g, '') : '';
+    const matchIdCard =
+      (cleanDigits.length > 0 && pIdDigits.includes(cleanDigits)) ||
+      (p.idCard && p.idCard.toLowerCase().includes(term));
+
+    const matchPatientId = p.patientId.toLowerCase().includes(term);
+    const matchPhone = p.phone ? p.phone.replace(/\D/g, '').includes(cleanDigits || term) : false;
+
+    return matchVillage && (matchName || matchIdCard || matchPatientId || matchPhone);
   });
 
   const toggleSymptom = (sym: string) => {
@@ -401,16 +420,48 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
             </div>
           </div>
 
+          {/* Notice: No Google login needed for VHV */}
+          <div className="mb-3 p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between shadow-2xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                <strong>สำหรับ อสม.:</strong> ค้นหาคนไข้และบันทึกผลน้ำตาลได้ทันที <strong>ไม่ต้องเข้าระบบ Google</strong>
+              </span>
+            </div>
+            <span className="text-[11px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full shrink-0">
+              พร้อมใช้
+            </span>
+          </div>
+
           {/* Search Box */}
           <div className="relative mb-3">
-            <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="ค้นหาชื่อ, นามสกุล, หรือเลขบัตร ปชช..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-base outline-none bg-slate-50/50"
+              placeholder="ค้นหาชื่อ, นามสกุล หรือ เลขบัตร ปชช. (13 หลัก)..."
+              className="w-full pl-11 pr-10 py-3 rounded-2xl border-2 border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 text-base outline-none bg-white shadow-xs"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Filter results count */}
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-2 px-1">
+            <span>
+              {searchTerm ? `ผลการค้นหา "${searchTerm}"` : `รายชื่อคนไข้`}
+            </span>
+            <span className="font-bold text-slate-700">
+              พบ {filteredPatients.length} คน
+            </span>
           </div>
 
           {/* Patient Cards List */}
@@ -418,13 +469,16 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
             {filteredPatients.length === 0 ? (
               <div className="text-center py-8 text-slate-400">
                 <User className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                <p className="text-base font-medium">ไม่พบรายชื่อคนไข้ในหมู่นี้</p>
+                <p className="text-base font-medium">ไม่พบรายชื่อคนไข้ที่ค้นหา</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  ตรวจสอบการสะกดชื่อ หรือเลขบัตรประชาชนอีกครั้ง
+                </p>
                 <button
                   type="button"
                   onClick={onAddNewPatientClick}
-                  className="mt-3 text-sm font-bold text-emerald-700 underline"
+                  className="mt-3 text-sm font-bold text-indigo-700 underline"
                 >
-                  แตะเพื่อเพิ่มคนไข้ใหม่ลงในฐานข้อมูล
+                  แตะเพื่อแจ้งพยาบาลเพิ่มคนไข้ใหม่
                 </button>
               </div>
             ) : (
@@ -432,32 +486,37 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
                 <div
                   key={p.patientId}
                   onClick={() => setCurrentPatient(p)}
-                  className="p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40 cursor-pointer active:scale-98 transition-all flex items-center justify-between gap-3 bg-white shadow-2xs"
+                  className="p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 cursor-pointer active:scale-98 transition-all flex items-center justify-between gap-3 bg-white shadow-xs"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-lg shrink-0">
                       {p.prefix === 'นาย' ? '👨' : '👩'}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-bold text-slate-900 text-base">
                           {p.prefix}
                           {p.firstName} {p.lastName}
                         </h4>
-                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-semibold">
                           อายุ {p.age} ปี
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                        {getVillageLabel(p.villageNo)}
-                        {p.address ? ` (บ้านเลขที่ ${p.address})` : ''}
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        <span className="text-[11px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-semibold">
+                          🪪 ปชช: {p.idCard}
+                        </span>
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                          {getVillageLabel(p.villageNo, activeVillages)}
+                          {p.address ? ` (บ้านเลขที่ ${p.address})` : ''}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs shrink-0 shadow-xs hover:bg-emerald-700"
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs shrink-0 shadow-xs hover:bg-emerald-700 active:scale-95 transition-all"
                   >
                     เลือก
                   </button>

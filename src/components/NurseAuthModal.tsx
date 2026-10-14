@@ -44,28 +44,44 @@ export const NurseAuthModal: React.FC<NurseAuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Check matching nurse
+  // Check matching nurse (by email, name, or phone)
   const handleVerify = () => {
     setErrorMessage(null);
     const target = verifyEmail.trim().toLowerCase();
     if (!target) {
-      setErrorMessage('กรุณากรอกอีเมลของพยาบาลเพื่อตรวจสอบสิทธิ์');
+      setErrorMessage('กรุณากรอกอีเมล หรือชื่อ-นามสกุลพยาบาลเพื่อตรวจสอบสิทธิ์');
       return;
     }
 
-    const matched = registeredUsers.find(
-      (u) =>
-        u.email.toLowerCase() === target &&
-        (u.role === 'Nurse' || u.role === 'Admin') &&
+    const cleanDigits = target.replace(/\D/g, '');
+    const matched = registeredUsers.find((u) => {
+      const matchEmail = u.email && u.email.toLowerCase().includes(target);
+      const matchName = u.fullName && u.fullName.toLowerCase().includes(target);
+      const matchPhone =
+        cleanDigits.length >= 4 &&
+        u.phone &&
+        u.phone.replace(/\D/g, '').includes(cleanDigits);
+
+      const roleStr = (u.role || '').toLowerCase();
+      const isNurseOrAdmin =
+        roleStr === '' ||
+        ['nurse', 'admin', 'staff', 'พยาบาล', 'เจ้าหน้าที่'].some((r) =>
+          roleStr.includes(r)
+        );
+
+      return (
+        (matchEmail || matchName || matchPhone) &&
+        isNurseOrAdmin &&
         u.status !== 'Inactive'
-    );
+      );
+    });
 
     if (matched) {
       onVerifySuccess(matched);
       onClose();
     } else {
       setErrorMessage(
-        `ไม่พบอีเมล "${target}" ในชีต User หรือสถานะยังไม่ได้รับอนุญาต กรุณาลงทะเบียนพยาบาลใหม่ด้านล่าง`
+        `ไม่พบข้อมูล "${verifyEmail}" ในชีต User หรือสถานะไม่ได้รับอนุญาต กรุณาแตะเลือกจากรายชื่อด้านล่าง หรือลงทะเบียนพยาบาลใหม่`
       );
     }
   };
