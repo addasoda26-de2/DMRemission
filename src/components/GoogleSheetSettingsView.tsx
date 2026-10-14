@@ -462,16 +462,19 @@ export const GoogleSheetSettingsView: React.FC<GoogleSheetSettingsViewProps> = (
       {/* Information Box on Required Headers */}
       <div className="bg-slate-50 rounded-3xl p-4 border border-slate-200 text-xs text-slate-600 space-y-2">
         <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
-          <span>📋 โครงสร้าง 3 แผ่นงาน (ชีต) ใน Google Sheet</span>
+          <span>📋 โครงสร้างแผ่นงาน (ชีต) ใน Google Sheet</span>
         </h4>
         <p className="text-[11px] leading-relaxed">
-          <strong>1. ชีต 'patient':</strong> เก็บข้อมูลผู้ป่วย 13 คอลัมน์ ได้แก่ PatientID, Prefix, FirstName, LastName, Age, Address, VillageNo, Subdistrict, District, Province, DOB, IDCard, Phone
+          <strong>1. ชีต 'patient':</strong> เก็บข้อมูลผู้ป่วย 13 คอลัมน์ (PatientID, Prefix, FirstName, LastName, Age, Address, VillageNo, Subdistrict, District, Province, DOB, IDCard, Phone)
         </p>
         <p className="text-[11px] leading-relaxed">
-          <strong>2. ชีต 'BloodSugarLogs':</strong> เก็บประวัติการตรวจ 17 คอลัมน์ ได้แก่ LogID, IDCard, FullName, MeasureDate, BloodSugarLevel, HealthVolunteer, Timestamp, Weight, Height, Waistline, BloodPressure, Symptoms, Village, Pulse, Prefix, FirstName, LastName
+          <strong>2. ชีต 'BloodSugarLogs' (หรือ 'BloodSugar'):</strong> เก็บประวัติการตรวจน้ำตาล 19 คอลัมน์ ได้แก่ LogID, IDCard, FullName, Date , Measure, BloodSugar, LevelHealth, Volunteer, Timestamp, Weight, Height, Waistline, Blood, Pressure, Symptoms, Village, Prefix, FirstName, LastName
         </p>
         <p className="text-[11px] leading-relaxed text-indigo-900 bg-indigo-50 p-2 rounded-xl border border-indigo-100">
-          <strong>3. ชีต 'User' (สิทธิ์พยาบาล):</strong> เก็บรายชื่อผู้ใช้งานและพยาบาลที่มีสิทธิ์เพิ่ม/แก้ไขรายชื่อคนไข้ ได้แก่ UserID, FullName, Email, Role, Phone, Position, Status, RegisteredDate
+          <strong>3. ชีต 'User' (สิทธิ์พยาบาล):</strong> เก็บรายชื่อผู้ใช้งานและพยาบาลที่มีสิทธิ์เพิ่ม/แก้ไขรายชื่อคนไข้ (UserID, FullName, Email, Role, Phone, Position, Status, RegisteredDate)
+        </p>
+        <p className="text-[11px] leading-relaxed text-emerald-900 bg-emerald-50 p-2 rounded-xl border border-emerald-100">
+          <strong>4. ชีต 'Village':</strong> ข้อมูล 18 หมู่บ้านของตำบลโซ่ อำเภอโซ่พิสัย จังหวัดบึงกาฬ (VillageNo, VillageName)
         </p>
       </div>
     </div>

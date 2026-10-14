@@ -1,5 +1,6 @@
 import { Patient, BloodSugarLog, AppUser, VillageInfo } from '../types';
 import { getAccessToken } from './auth';
+import { evaluateBloodSugar } from '../utils/sugarEvaluation';
 
 export const DEFAULT_SPREADSHEET_ID = '1W1DncVSCeiJ9xN_dp7a-2x92Qs8yDWCIjlLIbOV2FmM';
 
@@ -42,17 +43,19 @@ export const BLOOD_SUGAR_HEADERS = [
   'LogID',
   'IDCard',
   'FullName',
-  'MeasureDate',
-  'BloodSugarLevel',
-  'HealthVolunteer',
+  'Date ',
+  'Measure',
+  'BloodSugar',
+  'LevelHealth',
+  'Volunteer',
   'Timestamp',
   'Weight',
   'Height',
   'Waistline',
-  'BloodPressure',
+  'Blood',
+  'Pressure',
   'Symptoms',
   'Village',
-  'Pulse',
   'Prefix',
   'FirstName',
   'LastName',
@@ -254,7 +257,7 @@ export const ensureSheetsExist = async (spreadsheetId: string) => {
 
     if (!existingSheets.includes('BloodSugarLogs')) {
       await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugarLogs'!A1:Q1?valueInputOption=USER_ENTERED`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugarLogs'!A1:S1?valueInputOption=USER_ENTERED`,
         {
           method: 'PUT',
           headers: {
@@ -420,12 +423,20 @@ export const fetchLogsFromSheet = async (spreadsheetId: string): Promise<BloodSu
 
   if (token) {
     try {
-      const res = await fetch(
+      let res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugarLogs'!A1:Z1000`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
+      if (!res.ok) {
+        res = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugar'!A1:Z1000`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+      }
       if (res.ok) {
         const data = await res.json();
         rows = data.values || [];
@@ -440,61 +451,116 @@ export const fetchLogsFromSheet = async (spreadsheetId: string): Promise<BloodSu
     try {
       rows = await fetchViaGviz(spreadsheetId, 'BloodSugarLogs');
     } catch (err) {
-      console.warn('Gviz fetch for logs failed:', err);
-      if (!token) return [];
-      throw err;
+      try {
+        rows = await fetchViaGviz(spreadsheetId, 'BloodSugar');
+      } catch (err2) {
+        console.warn('Gviz fetch for logs failed:', err2);
+        if (!token) return [];
+        throw err;
+      }
     }
   }
 
   if (rows.length <= 1) return [];
 
   const headers = rows[0].map((h: any) => String(h || '').trim());
-  const getIdx = (name: string, fallbackIdx: number) => {
-    const idx = headers.findIndex((h: string) => h.toLowerCase() === name.toLowerCase());
+  const findCol = (aliases: string[], fallbackIdx: number) => {
+    const idx = headers.findIndex((h: string) => {
+      const clean = h.toLowerCase().replace(/[\s_()\-]/g, '');
+      return aliases.some((a) => clean === a.toLowerCase().replace(/[\s_()\-]/g, ''));
+    });
     return idx >= 0 ? idx : fallbackIdx;
   };
 
-  const logIdIdx = getIdx('LogID', 0);
-  const idCardIdx = getIdx('IDCard', 1);
-  const fullNameIdx = getIdx('FullName', 2);
-  const measureDateIdx = getIdx('MeasureDate', 3);
-  const sugarIdx = getIdx('BloodSugarLevel', 4);
-  const vhvIdx = getIdx('HealthVolunteer', 5);
-  const timestampIdx = getIdx('Timestamp', 6);
-  const weightIdx = getIdx('Weight', 7);
-  const heightIdx = getIdx('Height', 8);
-  const waistIdx = getIdx('Waistline', 9);
-  const bpIdx = getIdx('BloodPressure', 10);
-  const symIdx = getIdx('Symptoms', 11);
-  const vilIdx = getIdx('Village', 12);
-  const pulseIdx = getIdx('Pulse', 13);
-  const prefixIdx = getIdx('Prefix', 14);
-  const fnIdx = getIdx('FirstName', 15);
-  const lnIdx = getIdx('LastName', 16);
+  const logIdIdx = findCol(['logid', 'log_id', 'id'], 0);
+  const idCardIdx = findCol(['idcard', 'id_card', 'card', 'บัตรประชาชน'], 1);
+  const fullNameIdx = findCol(['fullname', 'full_name', 'name', 'ชื่อ-นามสกุล', 'ชื่อ'], 2);
+  const dateIdx = findCol(['date', 'date ', 'measuredate', 'วันที่'], 3);
+  const measureIdx = findCol(['measure', 'measuretype', 'การวัด'], 4);
+  const sugarIdx = findCol(['bloodsugar', 'bloodsugarlevel', 'sugar', 'น้ำตาล'], 5);
+  const levelHealthIdx = findCol(['levelhealth', 'healthlevel', 'ระดับสุขภาพ', 'เกณฑ์'], 6);
+  const volunteerIdx = findCol(['volunteer', 'healthvolunteer', 'อสม'], 7);
+  const timestampIdx = findCol(['timestamp', 'เวลา', 'วันเวลา'], 8);
+  const weightIdx = findCol(['weight', 'น้ำหนัก'], 9);
+  const heightIdx = findCol(['height', 'ส่วนสูง'], 10);
+  const waistIdx = findCol(['waistline', 'รอบเอว'], 11);
+  const bloodIdx = findCol(['blood', 'bloodpressure', 'ความดัน'], 12);
+  const pressureIdx = findCol(['pressure', 'pulse', 'ชีพจร'], 13);
+  const symIdx = findCol(['symptoms', 'อาการ'], 14);
+  const vilIdx = findCol(['village', 'หมู่บ้าน'], 15);
+  const prefixIdx = findCol(['prefix', 'คำนำหน้า'], 16);
+  const fnIdx = findCol(['firstname', 'ชื่อ'], 17);
+  const lnIdx = findCol(['lastname', 'นามสกุล'], 18);
 
   const logs: BloodSugarLog[] = [];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r || r.length === 0) continue;
 
+    let sugarVal = Number(r[sugarIdx]);
+    let measureTypeVal = String(r[measureIdx] || 'DTX');
+    let levelHealthVal = String(r[levelHealthIdx] || '');
+    let volunteerVal = String(r[volunteerIdx] || '');
+    let timestampVal = String(r[timestampIdx] || '');
+    let weightVal = r[weightIdx] || '';
+    let heightVal = r[heightIdx] || '';
+    let waistVal = r[waistIdx] || '';
+    let bloodVal = String(r[bloodIdx] || '');
+    let pressureVal = r[pressureIdx] || '';
+    let symVal = String(r[symIdx] || '');
+    let vilVal = String(r[vilIdx] || '');
+    let prefixVal = String(r[prefixIdx] || '');
+    let fnVal = String(r[fnIdx] || '');
+    let lnVal = String(r[lnIdx] || '');
+
+    // Auto-detect legacy shifted row format:
+    // If sugarVal is 0 or NaN, but r[4] (Measure) has numeric sugar like 110,
+    // and r[5] (BloodSugar) has text like "สมใจ รักษาดี"
+    if (
+      (isNaN(sugarVal) || sugarVal <= 0) &&
+      !isNaN(Number(r[4])) &&
+      Number(r[4]) > 0
+    ) {
+      sugarVal = Number(r[4]);
+      measureTypeVal = 'DTX';
+      volunteerVal = String(r[5] || '');
+      timestampVal = String(r[6] || '');
+      weightVal = r[7] || '';
+      heightVal = r[8] || '';
+      waistVal = r[9] || '';
+      bloodVal = String(r[10] || '');
+      symVal = String(r[11] || '');
+      vilVal = String(r[12] || '');
+      pressureVal = r[13] || '';
+      prefixVal = String(r[14] || '');
+      fnVal = String(r[15] || '');
+      lnVal = String(r[16] || '');
+    }
+
+    if (!levelHealthVal && sugarVal > 0) {
+      levelHealthVal = evaluateBloodSugar(sugarVal).label;
+    }
+
     logs.push({
       logId: String(r[logIdIdx] || `LOG-${i}`),
       idCard: String(r[idCardIdx] || ''),
-      fullName: String(r[fullNameIdx] || ''),
-      measureDate: String(r[measureDateIdx] || ''),
-      bloodSugarLevel: Number(r[sugarIdx]) || 0,
-      healthVolunteer: String(r[vhvIdx] || ''),
-      timestamp: String(r[timestampIdx] || ''),
-      weight: r[weightIdx] || '',
-      height: r[heightIdx] || '',
-      waistline: r[waistIdx] || '',
-      bloodPressure: String(r[bpIdx] || ''),
-      symptoms: String(r[symIdx] || ''),
-      village: String(r[vilIdx] || ''),
-      pulse: r[pulseIdx] || '',
-      prefix: String(r[prefixIdx] || ''),
-      firstName: String(r[fnIdx] || ''),
-      lastName: String(r[lnIdx] || ''),
+      fullName: String(r[fullNameIdx] || `${prefixVal}${fnVal} ${lnVal}`.trim()),
+      measureDate: String(r[dateIdx] || ''),
+      measureType: measureTypeVal,
+      bloodSugarLevel: isNaN(sugarVal) ? 0 : sugarVal,
+      levelHealth: levelHealthVal,
+      healthVolunteer: volunteerVal,
+      timestamp: timestampVal,
+      weight: weightVal,
+      height: heightVal,
+      waistline: waistVal,
+      bloodPressure: bloodVal,
+      pulse: pressureVal,
+      symptoms: symVal,
+      village: vilVal,
+      prefix: prefixVal,
+      firstName: fnVal,
+      lastName: lnVal,
       rowIndex: i + 1,
     });
   }
@@ -592,28 +658,47 @@ export const appendLogToSheet = async (
   const token = await getAccessToken();
   if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
 
+  const evalResult = evaluateBloodSugar(log.bloodSugarLevel);
+
+  // Exact 19 columns:
+  // LogID, IDCard, FullName, Date , Measure, BloodSugar, LevelHealth, Volunteer, Timestamp, Weight, Height, Waistline, Blood, Pressure, Symptoms, Village, Prefix, FirstName, LastName
   const row = [
     log.logId,
     log.idCard,
     log.fullName,
     log.measureDate,
+    log.measureType || 'DTX',
     log.bloodSugarLevel,
+    log.levelHealth || evalResult.label,
     log.healthVolunteer,
     log.timestamp,
     log.weight,
     log.height,
     log.waistline,
     log.bloodPressure,
+    log.pulse,
     log.symptoms,
     log.village,
-    log.pulse,
     log.prefix,
     log.firstName,
     log.lastName,
   ];
 
+  let sheetName = 'BloodSugarLogs';
+  try {
+    const meta = await getSpreadsheetMetadata(spreadsheetId);
+    const existing = meta.sheets?.map((s: any) => s.properties?.title) || [];
+    if (existing.includes('BloodSugarLogs')) {
+      sheetName = 'BloodSugarLogs';
+    } else if (existing.includes('BloodSugar')) {
+      sheetName = 'BloodSugar';
+    }
+  } catch (e) {
+    // keep default
+  }
+
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'BloodSugarLogs'!A:Q:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${sheetName}'!A:S:append?valueInputOption=USER_ENTERED`,
     {
       method: 'POST',
       headers: {

@@ -19,6 +19,9 @@ interface HeaderProps {
   sheetTitle?: string;
   onOpenSheetSettings: () => void;
   villageCount?: number;
+  pendingLogsCount?: number;
+  onOpenAppsScriptModal?: () => void;
+  isAppsScriptConnected?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +33,9 @@ export const Header: React.FC<HeaderProps> = ({
   sheetTitle,
   onOpenSheetSettings,
   villageCount,
+  pendingLogsCount = 0,
+  onOpenAppsScriptModal,
+  isAppsScriptConnected = false,
 }) => {
   const handleShareLine = () => {
     const url = window.location.href;
@@ -142,35 +148,64 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Sync Status Bar */}
-        <div className="mt-2 flex items-center justify-between text-xs px-2 py-1.5 rounded-xl bg-slate-50 border border-slate-100">
-          <button
-            onClick={onOpenSheetSettings}
-            className="flex items-center gap-1.5 text-left text-slate-600 hover:text-emerald-700 transition-colors"
-          >
-            {isSheetConnected ? (
-              <span className="flex items-center gap-1.5 text-emerald-700 font-semibold">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="truncate max-w-[200px] sm:max-w-[320px]">
-                  Google Sheet: {sheetTitle || 'เชื่อมต่อเรียบร้อย'}
+        <div className="mt-2 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={onOpenSheetSettings}
+              className="flex items-center gap-1.5 text-left text-slate-600 hover:text-emerald-700 transition-colors"
+            >
+              {isSheetConnected ? (
+                <span className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="truncate max-w-[170px] sm:max-w-[260px]">
+                    {sheetTitle || 'Google Sheet พร้อม'}
+                  </span>
                 </span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-amber-700 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                <CloudOff className="w-3.5 h-3.5 text-amber-600" />
-                <span>โหมดออฟไลน์/ทดสอบ (แตะเพื่อเชื่อมต่อ Google Sheet)</span>
-              </span>
-            )}
-          </button>
+              ) : (
+                <span className="flex items-center gap-1.5 text-amber-700 font-medium">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                  <CloudOff className="w-3.5 h-3.5 text-amber-600" />
+                  <span>โหมดออฟไลน์</span>
+                </span>
+              )}
+            </button>
 
-          <button
-            onClick={onOpenSheetSettings}
-            className="text-emerald-700 font-semibold hover:underline shrink-0 text-xs ml-2 flex items-center gap-1"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>ตั้งค่าชีต</span>
-          </button>
+            {isAppsScriptConnected ? (
+              <span className="text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                ⚡ ส่งชีตอัตโนมัติ
+              </span>
+            ) : null}
+
+            {pendingLogsCount > 0 && (
+              <button
+                type="button"
+                onClick={onOpenAppsScriptModal}
+                className="text-[11px] bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors animate-pulse"
+              >
+                ⚠️ รอส่งเข้าชีต {pendingLogsCount} รายการ
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            {onOpenAppsScriptModal && (
+              <button
+                type="button"
+                onClick={onOpenAppsScriptModal}
+                className="text-emerald-800 hover:text-emerald-950 font-bold text-[11px] px-2 py-0.5 bg-emerald-100/80 hover:bg-emerald-200 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <span>ระบบส่ง อสม.</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenSheetSettings}
+              className="text-slate-600 font-semibold hover:text-emerald-700 text-xs flex items-center gap-1"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>ตั้งค่าชีต</span>
+            </button>
+          </div>
         </div>
       </div>
     </header>

@@ -188,7 +188,9 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
         idCard: currentPatient.idCard,
         fullName: `${currentPatient.prefix}${currentPatient.firstName} ${currentPatient.lastName}`,
         measureDate,
+        measureType: 'DTX',
         bloodSugarLevel: sugarNum,
+        levelHealth: sugarEval.label,
         healthVolunteer: healthVolunteer.trim() || 'อสม. ตำบลโซ่',
         timestamp,
         weight: weight ? Number(weight) : '',
@@ -197,7 +199,8 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
         bloodPressure: bp,
         symptoms: selectedSymptoms.join(', '),
         village: `หมู่ ${currentPatient.villageNo} ${getVillageLabel(
-          currentPatient.villageNo
+          currentPatient.villageNo,
+          activeVillages
         )}`,
         pulse: pulse ? Number(pulse) : '',
         prefix: currentPatient.prefix,

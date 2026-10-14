@@ -37,6 +37,8 @@ export const filterLogsForExport = (
   });
 };
 
+import { evaluateBloodSugar } from './sugarEvaluation';
+
 /**
  * Generates and downloads a CSV file with UTF-8 BOM so Excel opens Thai properly.
  */
@@ -48,17 +50,19 @@ export const exportLogsToCSV = (
     'LogID',
     'IDCard',
     'FullName',
-    'MeasureDate',
-    'BloodSugarLevel(mg/dL)',
-    'HealthVolunteer',
+    'Date ',
+    'Measure',
+    'BloodSugar',
+    'LevelHealth',
+    'Volunteer',
     'Timestamp',
-    'Weight(kg)',
-    'Height(cm)',
+    'Weight',
+    'Height',
     'Waistline',
-    'BloodPressure(mmHg)',
+    'Blood',
+    'Pressure',
     'Symptoms',
     'Village',
-    'Pulse(bpm)',
     'Prefix',
     'FirstName',
     'LastName',
@@ -73,25 +77,30 @@ export const exportLogsToCSV = (
     return str;
   };
 
-  const rows = logs.map((log) => [
-    escapeCSV(log.logId),
-    escapeCSV(`\t${log.idCard}`), // force Excel to treat 13-digit ID as text
-    escapeCSV(log.fullName),
-    escapeCSV(log.measureDate),
-    escapeCSV(log.bloodSugarLevel),
-    escapeCSV(log.healthVolunteer),
-    escapeCSV(log.timestamp),
-    escapeCSV(log.weight),
-    escapeCSV(log.height),
-    escapeCSV(log.waistline),
-    escapeCSV(log.bloodPressure),
-    escapeCSV(log.symptoms),
-    escapeCSV(log.village),
-    escapeCSV(log.pulse),
-    escapeCSV(log.prefix),
-    escapeCSV(log.firstName),
-    escapeCSV(log.lastName),
-  ]);
+  const rows = logs.map((log) => {
+    const evalRes = evaluateBloodSugar(log.bloodSugarLevel);
+    return [
+      escapeCSV(log.logId),
+      escapeCSV(`\t${log.idCard}`), // force Excel to treat 13-digit ID as text
+      escapeCSV(log.fullName),
+      escapeCSV(log.measureDate),
+      escapeCSV(log.measureType || 'DTX'),
+      escapeCSV(log.bloodSugarLevel),
+      escapeCSV(log.levelHealth || evalRes.label),
+      escapeCSV(log.healthVolunteer),
+      escapeCSV(log.timestamp),
+      escapeCSV(log.weight),
+      escapeCSV(log.height),
+      escapeCSV(log.waistline),
+      escapeCSV(log.bloodPressure),
+      escapeCSV(log.pulse),
+      escapeCSV(log.symptoms),
+      escapeCSV(log.village),
+      escapeCSV(log.prefix),
+      escapeCSV(log.firstName),
+      escapeCSV(log.lastName),
+    ];
+  });
 
   const csvContent =
     '\uFEFF' + // UTF-8 BOM for Thai support in Microsoft Excel
@@ -122,6 +131,7 @@ export const exportLogsToExcel = (
   const tableRows = logs
     .map((log) => {
       const sugar = Number(log.bloodSugarLevel) || 0;
+      const evalRes = evaluateBloodSugar(sugar);
       let bgColor = '#ffffff';
       if (sugar < 70) bgColor = '#f3e8ff'; // purple
       else if (sugar <= 125) bgColor = '#ecfdf5'; // light green
@@ -134,16 +144,18 @@ export const exportLogsToExcel = (
         <td style="mso-number-format:'\\@';">${log.idCard}</td>
         <td>${log.fullName}</td>
         <td style="text-align:center;">${log.measureDate}</td>
+        <td style="text-align:center;">${log.measureType || 'DTX'}</td>
         <td style="text-align:center; font-weight:bold; background-color:${bgColor};">${log.bloodSugarLevel}</td>
+        <td style="text-align:center;">${log.levelHealth || evalRes.label}</td>
         <td>${log.healthVolunteer}</td>
         <td style="text-align:center;">${log.timestamp}</td>
         <td style="text-align:center;">${log.weight || '-'}</td>
         <td style="text-align:center;">${log.height || '-'}</td>
         <td style="text-align:center;">${log.waistline || '-'}</td>
         <td style="text-align:center;">${log.bloodPressure || '-'}</td>
+        <td style="text-align:center;">${log.pulse || '-'}</td>
         <td>${log.symptoms || '-'}</td>
         <td>${log.village}</td>
-        <td style="text-align:center;">${log.pulse || '-'}</td>
         <td>${log.prefix}</td>
         <td>${log.firstName}</td>
         <td>${log.lastName}</td>
@@ -172,7 +184,7 @@ export const exportLogsToExcel = (
       </xml>
       <![endif]-->
       <style>
-        th { background-color: #059669; color: #ffffff; padding: 10px; font-weight: bold; border: 1px solid #d1d5db; }
+        th { background-color: #059669; color: #ffffff; padding: 10px; font-weight: bold; border: 1px solid #d1d5db; font-family: Sarabun, sans-serif; }
         td { padding: 8px; border: 1px solid #e5e7eb; font-family: Sarabun, sans-serif; }
       </style>
     </head>
@@ -185,17 +197,19 @@ export const exportLogsToExcel = (
             <th>LogID</th>
             <th>IDCard</th>
             <th>FullName</th>
-            <th>MeasureDate</th>
-            <th>BloodSugarLevel (mg/dL)</th>
-            <th>HealthVolunteer</th>
+            <th>Date </th>
+            <th>Measure</th>
+            <th>BloodSugar</th>
+            <th>LevelHealth</th>
+            <th>Volunteer</th>
             <th>Timestamp</th>
-            <th>Weight (kg)</th>
-            <th>Height (cm)</th>
+            <th>Weight</th>
+            <th>Height</th>
             <th>Waistline</th>
-            <th>BloodPressure</th>
+            <th>Blood</th>
+            <th>Pressure</th>
             <th>Symptoms</th>
             <th>Village</th>
-            <th>Pulse</th>
             <th>Prefix</th>
             <th>FirstName</th>
             <th>LastName</th>

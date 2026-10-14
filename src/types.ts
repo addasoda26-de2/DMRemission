@@ -20,9 +20,11 @@ export interface BloodSugarLog {
   logId: string;
   idCard: string;
   fullName: string;
-  measureDate: string;
-  bloodSugarLevel: number;
-  healthVolunteer: string;
+  measureDate: string; // Date
+  measureType?: string; // Measure (e.g. DTX)
+  bloodSugarLevel: number; // BloodSugar (mg/dL)
+  levelHealth?: string; // LevelHealth (e.g. ปกติ (DM Remission))
+  healthVolunteer: string; // Volunteer
   timestamp: string;
   weight: number | string;
   height: number | string;

@@ -178,10 +178,15 @@ export const HistoryLogsView: React.FC<HistoryLogsViewProps> = ({
                     <h4 className="font-bold text-slate-900 text-lg mt-1">
                       {log.fullName}
                     </h4>
-                    <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
-                      <span>อสม. ผู้ตรวจ: {log.healthVolunteer}</span>
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${evalResult.badgeBg}`}>
+                        {log.levelHealth || evalResult.label}
+                      </span>
+                      <span className="text-xs text-slate-500 flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        <span>อสม. {log.healthVolunteer}</span>
+                      </span>
+                    </div>
                   </div>
 
                   {/* Blood Sugar Badge & Delete */}
