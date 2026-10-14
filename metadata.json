@@ -1,0 +1,6 @@
+{
+  "name": "DM Remission Tracker - บันทึกเบาหวาน อสม. โซ่พิสัย",
+  "description": "ระบบติดตามและบันทึกข้อมูลระดับน้ำตาลในเลือดผู้ป่วยเบาหวาน DM Remission สำหรับ อสม. และพยาบาล ตำบลโซ่ อำเภอโซ่พิสัย จังหวัดบึงกาฬ เชื่อมต่อ Google Sheets",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
