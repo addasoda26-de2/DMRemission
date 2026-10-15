@@ -11,6 +11,7 @@ import {
   Database,
   ArrowRight,
   ShieldCheck,
+  Send,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import {
@@ -36,6 +37,8 @@ interface GoogleSheetSettingsViewProps {
   onSeedInitialDataToSheet?: () => Promise<void>;
   patientCount: number;
   logCount: number;
+  onOpenAppsScriptModal?: () => void;
+  isAppsScriptConnected?: boolean;
 }
 
 export const GoogleSheetSettingsView: React.FC<GoogleSheetSettingsViewProps> = ({
@@ -49,6 +52,8 @@ export const GoogleSheetSettingsView: React.FC<GoogleSheetSettingsViewProps> = (
   onSeedInitialDataToSheet,
   patientCount,
   logCount,
+  onOpenAppsScriptModal,
+  isAppsScriptConnected = false,
 }) => {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [driveFiles, setDriveFiles] = useState<DriveSpreadsheetItem[]>([]);
@@ -349,6 +354,23 @@ export const GoogleSheetSettingsView: React.FC<GoogleSheetSettingsViewProps> = (
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
+
+            {onOpenAppsScriptModal && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={onOpenAppsScriptModal}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-98"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>
+                    {isAppsScriptConnected
+                      ? '⚡ ตั้งค่าระบบส่งข้อมูลอัตโนมัติ (Google Apps Script - เชื่อมต่อแล้ว)'
+                      : '⚙️ ตั้งค่าระบบส่งข้อมูลอัตโนมัติ (Google Apps Script - ไม่ต้องล็อกอิน Google)'}
+                  </span>
+                </button>
+              </div>
+            )}
 
             {onSeedInitialDataToSheet && (
               <div className="pt-2">

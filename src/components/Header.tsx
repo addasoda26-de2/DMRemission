@@ -8,7 +8,11 @@ import {
   UserCheck,
   Stethoscope,
   Type,
+  KeyRound,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
+import { AppUser } from '../types';
 
 interface HeaderProps {
   fontSize: 'normal' | 'large' | 'huge';
@@ -22,6 +26,9 @@ interface HeaderProps {
   pendingLogsCount?: number;
   onOpenAppsScriptModal?: () => void;
   isAppsScriptConnected?: boolean;
+  currentUser?: AppUser | null;
+  onOpenLoginModal?: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -36,6 +43,9 @@ export const Header: React.FC<HeaderProps> = ({
   pendingLogsCount = 0,
   onOpenAppsScriptModal,
   isAppsScriptConnected = false,
+  currentUser,
+  onOpenLoginModal,
+  onLogout,
 }) => {
   const handleShareLine = () => {
     const url = window.location.href;
@@ -113,6 +123,44 @@ export const Header: React.FC<HeaderProps> = ({
                 ก++
               </button>
             </div>
+
+            {/* User Login / Profile Badge */}
+            {currentUser ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onOpenLoginModal}
+                  title={`ผู้ใช้งาน: ${currentUser.fullName} (${currentUser.role})`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-950 shadow-xs max-w-[140px] sm:max-w-[200px]"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                  <span className="truncate">{currentUser.fullName.split(' ')[0]}</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded-md font-black shrink-0">
+                    {currentUser.role}
+                  </span>
+                </button>
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    title="ออกจากระบบ"
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenLoginModal}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border bg-slate-900 hover:bg-slate-800 text-white shadow-xs active:scale-95"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">เข้าสู่ระบบ</span>
+                <span className="sm:hidden">ล็อกอิน</span>
+              </button>
+            )}
 
             {/* Role Switcher (VHV / Nurse) */}
             <button

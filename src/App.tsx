@@ -12,7 +12,8 @@ import { PatientManagementView } from './components/PatientManagementView';
 import { HistoryLogsView } from './components/HistoryLogsView';
 import { DashboardAndExportView } from './components/DashboardAndExportView';
 import { GoogleSheetSettingsView } from './components/GoogleSheetSettingsView';
-import { NurseAuthModal } from './components/NurseAuthModal';
+import { UserLoginModal } from './components/UserLoginModal';
+import { AppsScriptSetupModal } from './components/AppsScriptSetupModal';
 import { Patient, BloodSugarLog, AppUser, VillageInfo } from './types';
 import { INITIAL_PATIENTS, INITIAL_LOGS, INITIAL_USERS } from './constants/initialData';
 import { VILLAGES_LIST } from './constants/villages';
@@ -29,6 +30,8 @@ import {
   appendLogToSheet,
   appendUserToSheet,
   appendVillageToSheet,
+  getAppsScriptUrl,
+  appendLogViaAppsScript,
 } from './services/sheetsService';
 
 export default function App() {
@@ -84,6 +87,34 @@ export default function App() {
 
   const [activeNurse, setActiveNurse] = useState<AppUser | null>(null);
   const [isNurseAuthModalOpen, setIsNurseAuthModalOpen] = useState<boolean>(false);
+
+  // Username & Password Authentication State (checked against 'User' sheet)
+  const [authenticatedUser, setAuthenticatedUser] = useState<AppUser | null>(() => {
+    const saved = localStorage.getItem('dm_authenticated_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [isAppsScriptModalOpen, setIsAppsScriptModalOpen] = useState<boolean>(false);
+
+  // Pending logs queue for Google Sheet auto-sync
+  const [pendingLogs, setPendingLogs] = useState<BloodSugarLog[]>(() => {
+    const saved = localStorage.getItem('dm_pending_sheet_logs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
 
   // Data state (Initialized with the user's provided 19 patients)
   const [patients, setPatients] = useState<Patient[]>(() => {
@@ -144,6 +175,25 @@ export default function App() {
     localStorage.setItem('dm_logs_data', JSON.stringify(logs));
   }, [logs]);
 
+  // Persist pending sheet logs
+  useEffect(() => {
+    localStorage.setItem('dm_pending_sheet_logs', JSON.stringify(pendingLogs));
+  }, [pendingLogs]);
+
+  // Sync authenticated user role
+  useEffect(() => {
+    if (authenticatedUser) {
+      localStorage.setItem('dm_authenticated_user', JSON.stringify(authenticatedUser));
+      const roleStr = (authenticatedUser.role || '').toLowerCase();
+      if (['admin', 'nurse', 'staff', 'พยาบาล', 'เจ้าหน้าที่'].some((r) => roleStr.includes(r))) {
+        setActiveNurse(authenticatedUser);
+        setUserRole('nurse');
+      }
+    } else {
+      localStorage.removeItem('dm_authenticated_user');
+    }
+  }, [authenticatedUser]);
+
   // Auto hide toast
   useEffect(() => {
     if (toastMessage) {
@@ -182,10 +232,11 @@ export default function App() {
     }
   }, [user, registeredUsers]);
 
-  // Check Nurse Authorization boolean
+  // Check Nurse/Staff Authorization (Logged in via Username/Password or Google or activeNurse)
   const isAuthorizedNurse = Boolean(
+    authenticatedUser ||
     activeNurse ||
-    (userRole === 'nurse' && activeNurse !== null)
+    (userRole === 'nurse' && (activeNurse !== null || authenticatedUser !== null))
   );
 
   // Sync data from Google Sheet (works authenticated via API or unauthenticated via gviz)
@@ -260,40 +311,44 @@ export default function App() {
     localStorage.setItem('dm_spreadsheet_title', title);
   };
 
-  // Save new Blood Sugar Log
+  // Save new Blood Sugar Log (Supports Apps Script direct submission without Google login)
   const handleSaveLog = async (newLog: BloodSugarLog) => {
     // 1. Update local state immediately
     const updatedLogs = [newLog, ...logs];
     setLogs(updatedLogs);
 
-    // 2. If connected to Google Sheet and authenticated, append to sheet
+    // 2. If connected to Google Sheet, attempt appending
     if (spreadsheetId) {
-      const token = await getAccessToken();
-      if (token) {
-        try {
-          await appendLogToSheet(spreadsheetId, newLog);
-        } catch (err) {
-          console.error('Failed to append log to Google Sheet:', err);
-          setToastMessage('บันทึกในเครื่องแล้ว (การส่งเข้า Google Sheet ล้มเหลว กรุณาซิงค์ภายหลัง)');
-          return;
+      try {
+        const res = await appendLogToSheet(spreadsheetId, newLog);
+        if (res?.method === 'appsscript') {
+          setToastMessage('บันทึกผลและส่งตรงเข้าชีต BloodSugarLogs แล้ว (ไม่ต้องล็อกอิน Google)');
+        } else {
+          setToastMessage('บันทึกผลการตรวจและส่งเข้า Google Sheet สำเร็จ');
         }
+        return;
+      } catch (err: any) {
+        console.warn('Auto send to sheet failed, queued for sync:', err);
+        setPendingLogs((prev) => [newLog, ...prev]);
+        setToastMessage('บันทึกในเครื่องแล้ว (รอส่งเข้า Google Sheet เมื่อเชื่อมต่อ)');
+        return;
       }
     }
     setToastMessage('บันทึกผลการตรวจน้ำตาลเรียบร้อยแล้ว');
   };
 
-  // Patient CRUD - STRICTLY ENFORCE NURSE ROLE IN 'User' SHEET
+  // Patient CRUD - STRICTLY ENFORCE NURSE/ADMIN ROLE IN 'User' SHEET
   const handleAddPatient = async (newPatient: Patient) => {
     if (!isAuthorizedNurse) {
-      setIsNurseAuthModalOpen(true);
-      throw new Error('เฉพาะเจ้าหน้าที่พยาบาลที่ลงทะเบียนในชีต User เท่านั้นที่มีสิทธิ์เพิ่มคนไข้');
+      setIsLoginModalOpen(true);
+      throw new Error('เฉพาะเจ้าหน้าที่หรือผู้ดูแลระบบที่ลงทะเบียนในชีต User เท่านั้นที่มีสิทธิ์เพิ่มคนไข้');
     }
 
     const updated = [newPatient, ...patients];
     setPatients(updated);
 
     if (spreadsheetId) {
-      const token = await getAccessToken();
+      const token = await getAccessToken().catch(() => null);
       if (token) {
         try {
           await appendPatientToSheet(spreadsheetId, newPatient);
@@ -307,8 +362,8 @@ export default function App() {
 
   const handleUpdatePatient = async (updatedPatient: Patient) => {
     if (!isAuthorizedNurse) {
-      setIsNurseAuthModalOpen(true);
-      throw new Error('เฉพาะเจ้าหน้าที่พยาบาลที่ลงทะเบียนในชีต User เท่านั้นที่มีสิทธิ์แก้ไขคนไข้');
+      setIsLoginModalOpen(true);
+      throw new Error('เฉพาะเจ้าหน้าที่หรือผู้ดูแลระบบที่ลงทะเบียนในชีต User เท่านั้นที่มีสิทธิ์แก้ไขคนไข้');
     }
 
     const updated = patients.map((p) =>
@@ -317,7 +372,7 @@ export default function App() {
     setPatients(updated);
 
     if (spreadsheetId && updatedPatient.rowIndex) {
-      const token = await getAccessToken();
+      const token = await getAccessToken().catch(() => null);
       if (token) {
         try {
           await updatePatientInSheet(
@@ -335,15 +390,15 @@ export default function App() {
 
   const handleDeletePatient = async (patientToDelete: Patient) => {
     if (!isAuthorizedNurse) {
-      setIsNurseAuthModalOpen(true);
-      throw new Error('เฉพาะเจ้าหน้าที่พยาบาลที่ลงทะเบียนในชีต User เท่านั้นที่มีสิทธิ์ลบคนไข้');
+      setIsLoginModalOpen(true);
+      throw new Error('เฉพาะเจ้าหน้าที่หรือผู้ดูแลระบบที่ลงทะเบียนในชีต User เท่านั้นที่มีสิทธิ์ลบคนไข้');
     }
 
     const updated = patients.filter((p) => p.patientId !== patientToDelete.patientId);
     setPatients(updated);
 
     if (spreadsheetId && patientToDelete.rowIndex) {
-      const token = await getAccessToken();
+      const token = await getAccessToken().catch(() => null);
       if (token) {
         try {
           await deleteRowFromSheet(spreadsheetId, 'patient', patientToDelete.rowIndex);
@@ -360,7 +415,7 @@ export default function App() {
     setLogs(updated);
 
     if (spreadsheetId && logToDelete.rowIndex) {
-      const token = await getAccessToken();
+      const token = await getAccessToken().catch(() => null);
       if (token) {
         try {
           await deleteRowFromSheet(spreadsheetId, 'BloodSugarLogs', logToDelete.rowIndex);
@@ -372,30 +427,80 @@ export default function App() {
     setToastMessage('ลบผลการตรวจเรียบร้อยแล้ว');
   };
 
-  // Register New Nurse to 'User' sheet
-  const handleRegisterNurse = async (newNurse: AppUser) => {
-    const updated = [newNurse, ...registeredUsers];
+  // Login & Session Handlers (Username & Password from User sheet)
+  const handleLoginSuccess = (user: AppUser) => {
+    setAuthenticatedUser(user);
+    const roleStr = (user.role || '').toLowerCase();
+    if (['admin', 'nurse', 'staff', 'พยาบาล', 'เจ้าหน้าที่'].some((r) => roleStr.includes(r))) {
+      setActiveNurse(user);
+      setUserRole('nurse');
+    }
+    setToastMessage(`ยินดีต้อนรับ ${user.fullName} (${user.role}) เข้าสู่ระบบ`);
+  };
+
+  const handleLogout = () => {
+    setAuthenticatedUser(null);
+    setActiveNurse(null);
+    setUserRole('vhv');
+    localStorage.removeItem('dm_authenticated_user');
+    setToastMessage('ออกจากระบบเรียบร้อยแล้ว');
+  };
+
+  // Register New User in 'User' sheet
+  const handleRegisterUser = async (newUser: AppUser) => {
+    const updated = [newUser, ...registeredUsers];
     setRegisteredUsers(updated);
-    setActiveNurse(newNurse);
+    setAuthenticatedUser(newUser);
+    setActiveNurse(newUser);
     setUserRole('nurse');
 
     if (spreadsheetId) {
-      const token = await getAccessToken();
+      const token = await getAccessToken().catch(() => null);
       if (token) {
         try {
-          await appendUserToSheet(spreadsheetId, newNurse);
+          await appendUserToSheet(spreadsheetId, newUser);
         } catch (err) {
-          console.error('Failed to append nurse to User sheet:', err);
+          console.error('Failed to append user to sheet:', err);
         }
       }
     }
-    setToastMessage(`ลงทะเบียนพยาบาล ${newNurse.fullName} ลงในชีต User สำเร็จ`);
+    setToastMessage(`ลงทะเบียนผู้ใช้ ${newUser.fullName} ลงในชีต User สำเร็จ`);
   };
 
-  const handleNurseVerifySuccess = (nurse: AppUser) => {
-    setActiveNurse(nurse);
-    setUserRole('nurse');
-    setToastMessage(`ยืนยันสิทธิ์พยาบาล ${nurse.fullName} เรียบร้อยแล้ว`);
+  // Sync pending logs to Google Sheet via Apps Script or Google Sheets API
+  const handleSyncPendingLogs = async () => {
+    if (pendingLogs.length === 0) {
+      setToastMessage('ไม่มีรายการค้างส่ง');
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const appsScriptUrl = getAppsScriptUrl();
+      if (appsScriptUrl) {
+        await appendLogViaAppsScript(appsScriptUrl, pendingLogs);
+        setPendingLogs([]);
+        setToastMessage(`ส่งค่าน้ำตาล ${pendingLogs.length} รายการเข้า Google Sheet สำเร็จ`);
+        return;
+      }
+
+      const token = await getAccessToken().catch(() => null);
+      if (token && spreadsheetId) {
+        for (const l of pendingLogs) {
+          await appendLogToSheet(spreadsheetId, l);
+        }
+        setPendingLogs([]);
+        setToastMessage(`ส่งค่าน้ำตาล ${pendingLogs.length} รายการเข้า Google Sheet สำเร็จ`);
+        return;
+      }
+
+      setIsAppsScriptModalOpen(true);
+      throw new Error('กรุณาตั้งค่าเชื่อมต่อ Google Apps Script เพื่อส่งข้อมูลเข้า Google Sheet');
+    } catch (err: any) {
+      alert(err.message || 'ส่งข้อมูลไม่สำเร็จ');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Seed initial data to connected empty sheet (all sheets: patient, BloodSugarLogs, User, Village)
@@ -435,7 +540,7 @@ export default function App() {
 
   const handleAddNewPatientFromRecord = () => {
     if (!isAuthorizedNurse) {
-      setIsNurseAuthModalOpen(true);
+      setIsLoginModalOpen(true);
     } else {
       setActiveTab('patients');
       setIsAddPatientModalOpen(true);
@@ -453,14 +558,20 @@ export default function App() {
         userRole={userRole}
         setUserRole={(role) => {
           setUserRole(role);
-          if (role === 'nurse' && !activeNurse) {
-            setIsNurseAuthModalOpen(true);
+          if (role === 'nurse' && !isAuthorizedNurse) {
+            setIsLoginModalOpen(true);
           }
         }}
         isSheetConnected={!!spreadsheetId}
         sheetTitle={spreadsheetTitle}
         onOpenSheetSettings={() => setActiveTab('sheets')}
         villageCount={villages.length}
+        currentUser={authenticatedUser}
+        onOpenLoginModal={() => setIsLoginModalOpen(true)}
+        onLogout={handleLogout}
+        pendingLogsCount={pendingLogs.length}
+        onOpenAppsScriptModal={() => setIsAppsScriptModalOpen(true)}
+        isAppsScriptConnected={Boolean(getAppsScriptUrl())}
       />
 
       {/* Toast Alert */}
@@ -480,6 +591,7 @@ export default function App() {
             selectedPatientId={selectedPatientIdForMeasure}
             onClearSelectedPatient={() => setSelectedPatientIdForMeasure(undefined)}
             villages={villages}
+            currentUser={authenticatedUser}
           />
         )}
 
@@ -493,8 +605,8 @@ export default function App() {
             isAddModalOpenInitially={isAddPatientModalOpen}
             onCloseAddModalInitially={() => setIsAddPatientModalOpen(false)}
             isAuthorizedNurse={isAuthorizedNurse}
-            activeNurseInfo={activeNurse}
-            onRequestNurseAuth={() => setIsNurseAuthModalOpen(true)}
+            activeNurseInfo={authenticatedUser || activeNurse}
+            onRequestNurseAuth={() => setIsLoginModalOpen(true)}
             villages={villages}
           />
         )}
@@ -528,18 +640,31 @@ export default function App() {
             onSeedInitialDataToSheet={handleSeedInitialData}
             patientCount={patients.length}
             logCount={logs.length}
+            onOpenAppsScriptModal={() => setIsAppsScriptModalOpen(true)}
+            isAppsScriptConnected={Boolean(getAppsScriptUrl())}
           />
         )}
       </main>
 
-      {/* Nurse Authorization & Registration Modal */}
-      <NurseAuthModal
-        isOpen={isNurseAuthModalOpen}
-        onClose={() => setIsNurseAuthModalOpen(false)}
-        currentUserEmail={user?.email}
+      {/* User Login & Registration Modal (Checked against User sheet with Username & Password) */}
+      <UserLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
         registeredUsers={registeredUsers}
-        onRegisterNurse={handleRegisterNurse}
-        onVerifySuccess={handleNurseVerifySuccess}
+        onLoginSuccess={handleLoginSuccess}
+        onRegisterUser={handleRegisterUser}
+        currentUser={authenticatedUser}
+        onLogout={handleLogout}
+      />
+
+      {/* Google Apps Script Modal (Allows VHV to submit logs directly to Google Sheet without Google login) */}
+      <AppsScriptSetupModal
+        isOpen={isAppsScriptModalOpen}
+        onClose={() => setIsAppsScriptModalOpen(false)}
+        spreadsheetId={spreadsheetId || DEFAULT_SPREADSHEET_ID}
+        pendingLogsCount={pendingLogs.length}
+        onSyncPendingLogs={handleSyncPendingLogs}
+        isSyncing={isSyncing}
       />
 
       {/* Bottom Navigation */}

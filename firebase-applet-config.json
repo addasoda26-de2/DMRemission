@@ -3,6 +3,7 @@
   "appId": "1:576820344157:web:91cffcf4c8e5d5b6c1e4b4",
   "apiKey": "AIzaSyCwRUST5aEQyAAspqwPLXhGjhIrJbPeCwE",
   "authDomain": "augmented-depth-qf6jr.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-dmremissiontrack-645b0181-9157-4d36-babb-18c41c4ad100",
   "storageBucket": "augmented-depth-qf6jr.firebasestorage.app",
   "messagingSenderId": "576820344157",
   "measurementId": "",

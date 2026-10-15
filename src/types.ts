@@ -57,8 +57,10 @@ export interface AppUser {
   role: 'Nurse' | 'VHV' | 'Admin' | 'Staff' | string;
   phone: string;
   position: string;
-  status: 'Active' | 'Pending' | 'Inactive';
+  status: 'Active' | 'Pending' | 'Inactive' | boolean | string;
   registeredDate: string;
+  username?: string;
+  password?: string;
   rowIndex?: number;
 }
 

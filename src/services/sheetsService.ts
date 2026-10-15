@@ -21,6 +21,8 @@ export const USER_HEADERS = [
   'Position',
   'Status',
   'RegisteredDate',
+  'username',
+  'password',
 ];
 
 export const PATIENT_HEADERS = [
@@ -60,6 +62,165 @@ export const BLOOD_SUGAR_HEADERS = [
   'FirstName',
   'LastName',
 ];
+
+export const APPS_SCRIPT_STORAGE_KEY = 'dm_apps_script_url';
+
+export const getAppsScriptUrl = (): string => {
+  return localStorage.getItem(APPS_SCRIPT_STORAGE_KEY) || '';
+};
+
+export const setAppsScriptUrl = (url: string): void => {
+  if (url && url.trim()) {
+    localStorage.setItem(APPS_SCRIPT_STORAGE_KEY, url.trim());
+  } else {
+    localStorage.removeItem(APPS_SCRIPT_STORAGE_KEY);
+  }
+};
+
+export const GOOGLE_APPS_SCRIPT_CODE = `/**
+ * DM Remission Tracker - ต.โซ่ อ.โซ่พิสัย จ.บึงกาฬ
+ * เว็บแอป Google Apps Script สำหรับรับบันทึกผลน้ำตาล (BloodSugarLogs)
+ * รองรับการส่งจาก อสม. และผู้ใช้งานทุกคน โดยไม่ต้องล็อกอิน Google
+ */
+
+function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) || 'ping';
+  if (action === 'ping') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      status: 'ok',
+      message: 'DM Remission Google Apps Script พร้อมใช้งานและเชื่อมต่อสมบูรณ์'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput(JSON.stringify({ status: 'ok' })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('BloodSugarLogs');
+    if (!sheet) {
+      sheet = ss.getSheetByName('BloodSugar');
+    }
+    if (!sheet) {
+      sheet = ss.insertSheet('BloodSugarLogs');
+      sheet.appendRow([
+        'LogID', 'IDCard', 'FullName', 'Date ', 'Measure', 'BloodSugar', 'LevelHealth',
+        'Volunteer', 'Timestamp', 'Weight', 'Height', 'Waistline', 'Blood', 'Pressure',
+        'Symptoms', 'Village', 'Prefix', 'FirstName', 'LastName'
+      ]);
+    }
+
+    var payload = {};
+    if (e && e.postData && e.postData.contents) {
+      payload = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      payload = e.parameter;
+    }
+
+    // Support single log or array of logs
+    var logs = Array.isArray(payload) ? payload : (payload.logs || [payload]);
+    var appendedCount = 0;
+
+    for (var i = 0; i < logs.length; i++) {
+      var item = logs[i];
+      if (!item) continue;
+
+      var row = [
+        item.logId || item.LogID || ('LOG-' + new Date().getTime()),
+        item.idCard || item.IDCard || '',
+        item.fullName || item.FullName || '',
+        item.measureDate || item.date || item.Date || '',
+        item.measureType || item.Measure || 'DTX',
+        Number(item.bloodSugarLevel || item.bloodSugar || item.BloodSugar || 0),
+        item.levelHealth || item.LevelHealth || '',
+        item.healthVolunteer || item.volunteer || item.Volunteer || '',
+        item.timestamp || item.Timestamp || '',
+        item.weight || item.Weight || '',
+        item.height || item.Height || '',
+        item.waistline || item.Waistline || '',
+        item.bloodPressure || item.blood || item.Blood || '',
+        item.pulse || item.pressure || item.Pressure || '',
+        item.symptoms || item.Symptoms || '',
+        item.village || item.Village || '',
+        item.prefix || item.Prefix || '',
+        item.firstName || item.FirstName || '',
+        item.lastName || item.LastName || ''
+      ];
+
+      sheet.appendRow(row);
+      appendedCount++;
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      message: 'บันทึกสำเร็จ ' + appendedCount + ' รายการ',
+      count: appendedCount
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      message: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+`;
+
+export const testAppsScriptConnection = async (
+  url: string
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const pingUrl = `${url.trim()}${url.includes('?') ? '&' : '?'}action=ping`;
+    await fetch(pingUrl, { method: 'GET', mode: 'no-cors' });
+    return {
+      success: true,
+      message: 'ส่งสัญญาณทดสอบสำเร็จ! เว็บแอปพร้อมบันทึกค่าน้ำตาลเข้าชีต BloodSugarLogs',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: 'ไม่สามารถเชื่อมต่อได้: ' + (err.message || 'กรุณาตรวจสอบ URL เว็บแอป'),
+    };
+  }
+};
+
+export const appendLogViaAppsScript = async (
+  scriptUrl: string,
+  log: BloodSugarLog | BloodSugarLog[]
+): Promise<void> => {
+  if (!scriptUrl) throw new Error('ไม่พบ URL ของ Google Apps Script');
+
+  const payload = Array.isArray(log) ? { logs: log } : log;
+  await fetch(scriptUrl.trim(), {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify(payload),
+  });
+};
+
+export const parseGvizDate = (val: any): string => {
+  if (!val) return '';
+  const str = String(val).trim();
+  if (str.startsWith('Date(') && str.endsWith(')')) {
+    const parts = str.slice(5, -1).split(',').map((p) => parseInt(p.trim(), 10));
+    if (parts.length >= 3) {
+      const year = parts[0];
+      const month = String(parts[1] + 1).padStart(2, '0');
+      const day = String(parts[2]).padStart(2, '0');
+      if (parts.length >= 5) {
+        const hour = String(parts[3] || 0).padStart(2, '0');
+        const min = String(parts[4] || 0).padStart(2, '0');
+        return `${year}-${month}-${day} ${hour}:${min}`;
+      }
+      return `${year}-${month}-${day}`;
+    }
+  }
+  return str;
+};
 
 export interface DriveSpreadsheetItem {
   id: string;
@@ -545,12 +706,12 @@ export const fetchLogsFromSheet = async (spreadsheetId: string): Promise<BloodSu
       logId: String(r[logIdIdx] || `LOG-${i}`),
       idCard: String(r[idCardIdx] || ''),
       fullName: String(r[fullNameIdx] || `${prefixVal}${fnVal} ${lnVal}`.trim()),
-      measureDate: String(r[dateIdx] || ''),
+      measureDate: parseGvizDate(r[dateIdx]) || String(r[dateIdx] || ''),
       measureType: measureTypeVal,
       bloodSugarLevel: isNaN(sugarVal) ? 0 : sugarVal,
       levelHealth: levelHealthVal,
       healthVolunteer: volunteerVal,
-      timestamp: timestampVal,
+      timestamp: parseGvizDate(timestampVal) || timestampVal,
       weight: weightVal,
       height: heightVal,
       waistline: waistVal,
@@ -654,10 +815,7 @@ export const updatePatientInSheet = async (
 export const appendLogToSheet = async (
   spreadsheetId: string,
   log: BloodSugarLog
-): Promise<void> => {
-  const token = await getAccessToken();
-  if (!token) throw new Error('กรุณาเข้าสู่ระบบ Google ก่อนดำเนินการ');
-
+): Promise<{ success: boolean; method: 'appsscript' | 'sheets_api' }> => {
   const evalResult = evaluateBloodSugar(log.bloodSugarLevel);
 
   // Exact 19 columns:
@@ -683,6 +841,26 @@ export const appendLogToSheet = async (
     log.firstName,
     log.lastName,
   ];
+
+  // 1. Try Google Apps Script Web App first (allows saving without Google login!)
+  const appsScriptUrl = getAppsScriptUrl();
+  if (appsScriptUrl) {
+    try {
+      await appendLogViaAppsScript(appsScriptUrl, log);
+      return { success: true, method: 'appsscript' };
+    } catch (scriptErr) {
+      console.warn('Apps Script submission error:', scriptErr);
+    }
+  }
+
+  // 2. Fallback to Google Sheets API if logged into Google
+  const token = await getAccessToken().catch(() => null);
+  if (!token) {
+    if (appsScriptUrl) {
+      return { success: true, method: 'appsscript' };
+    }
+    throw new Error('กรุณาตั้งค่าเชื่อมต่อ Google Apps Script หรือเข้าสู่ระบบ Google เพื่อส่งข้อมูลเข้า Google Sheet');
+  }
 
   let sheetName = 'BloodSugarLogs';
   try {
@@ -713,6 +891,8 @@ export const appendLogToSheet = async (
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || 'บันทึกประวัติระดับน้ำตาลลง Google Sheet ล้มเหลว');
   }
+
+  return { success: true, method: 'sheets_api' };
 };
 
 // Delete row via batchUpdate
@@ -805,11 +985,22 @@ export const fetchUsersFromSheet = async (spreadsheetId: string): Promise<AppUse
   const posIdx = getIdx('Position', 5);
   const statusIdx = getIdx('Status', 6);
   const dateIdx = getIdx('RegisteredDate', 7);
+  const usernameIdx = getIdx('username', 8);
+  const passwordIdx = getIdx('password', 9);
 
   const users: AppUser[] = [];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
-    if (!r || r.length === 0 || (!r[emailIdx] && !r[nameIdx])) continue;
+    if (!r || r.length === 0 || (!r[emailIdx] && !r[nameIdx] && !r[usernameIdx])) continue;
+
+    const rawStatus = r[statusIdx];
+    const isActive =
+      rawStatus === true ||
+      String(rawStatus).toLowerCase() === 'true' ||
+      String(rawStatus).toLowerCase() === 'active' ||
+      rawStatus === 1 ||
+      rawStatus === undefined ||
+      rawStatus === null;
 
     users.push({
       userId: String(r[idIdx] || `USR-${i}`),
@@ -818,8 +1009,16 @@ export const fetchUsersFromSheet = async (spreadsheetId: string): Promise<AppUse
       role: (r[roleIdx] as any) || 'Nurse',
       phone: String(r[phoneIdx] || ''),
       position: String(r[posIdx] || 'พยาบาลวิชาชีพ'),
-      status: (r[statusIdx] as any) || 'Active',
+      status: isActive ? 'Active' : 'Inactive',
       registeredDate: String(r[dateIdx] || ''),
+      username:
+        r[usernameIdx] !== undefined && r[usernameIdx] !== null
+          ? String(r[usernameIdx]).trim()
+          : undefined,
+      password:
+        r[passwordIdx] !== undefined && r[passwordIdx] !== null
+          ? String(r[passwordIdx]).trim()
+          : undefined,
       rowIndex: i + 1,
     });
   }
@@ -843,10 +1042,12 @@ export const appendUserToSheet = async (
     user.position,
     user.status,
     user.registeredDate,
+    user.username || '',
+    user.password || '',
   ];
 
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'User'!A:H:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'User'!A:J:append?valueInputOption=USER_ENTERED`,
     {
       method: 'POST',
       headers: {

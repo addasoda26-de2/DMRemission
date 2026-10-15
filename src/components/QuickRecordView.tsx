@@ -29,6 +29,7 @@ interface QuickRecordViewProps {
   selectedPatientId?: string;
   onClearSelectedPatient?: () => void;
   villages?: import('../types').VillageInfo[];
+  currentUser?: import('../types').AppUser | null;
 }
 
 const COMMON_SYMPTOMS = [
@@ -49,6 +50,7 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
   selectedPatientId,
   onClearSelectedPatient,
   villages,
+  currentUser,
 }) => {
   const activeVillages = villages && villages.length > 0 ? villages : VILLAGES_LIST;
   // State for active patient
@@ -97,6 +99,13 @@ export const QuickRecordView: React.FC<QuickRecordViewProps> = ({
       localStorage.setItem('dm_vhv_name', healthVolunteer);
     }
   }, [healthVolunteer]);
+
+  // Sync volunteer name from logged in user
+  useEffect(() => {
+    if (currentUser?.fullName) {
+      setHealthVolunteer(currentUser.fullName);
+    }
+  }, [currentUser]);
 
   const sugarEval = evaluateBloodSugar(bloodSugar);
   const bmiInfo = calculateBmi(weight, height);
